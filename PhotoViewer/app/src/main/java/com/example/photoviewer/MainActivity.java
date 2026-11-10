@@ -29,6 +29,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -69,13 +70,15 @@ public class MainActivity extends AppCompatActivity {
     boolean darkMode;
     SharedPreferences viewerPreferences;
 
-    // Android 에뮬레이터에서 10.0.2.2는 PC의 localhost를 의미한다.
-    String site_url = "http://10.0.2.2:8000";
+
+    String site_url =
+            "https://dbrwogud46.pythonanywhere.com";
 
     JSONObject post_json;
     String imageUrl = null;
     Bitmap bmImg = null;
     CloadImage taskDownload;
+    ImageDiskCache imageDiskCache;
 
     // ID 11에서 업로드 기능을 구현
     PutPost taskUpload;
@@ -137,6 +140,7 @@ public class MainActivity extends AppCompatActivity {
         searchInput = findViewById(R.id.edit_search);
         viewModeButton = findViewById(R.id.btn_view_mode);
         themeButton = findViewById(R.id.btn_theme);
+        imageDiskCache = new ImageDiskCache(this);
 
         gridMode = viewerPreferences.getBoolean(
                 "grid_mode",
@@ -375,6 +379,8 @@ public class MainActivity extends AppCompatActivity {
     private class CloadImage
             extends AsyncTask<String, Integer, List<PostItem>> {
 
+        private int cacheHitCount;
+        private int networkDownloadCount;
         @Override
         protected List<PostItem> doInBackground(String... urls) {
             List<PostItem> postItems = new ArrayList<>();
@@ -429,28 +435,84 @@ public class MainActivity extends AppCompatActivity {
 
                         if (!imageUrl.equals("")
                                 && !imageUrl.equals("null")) {
-                            URL myImageUrl = new URL(imageUrl);
-                            HttpURLConnection imageConn =
-                                    (HttpURLConnection)
-                                            myImageUrl.openConnection();
-
-                            imageConn.setConnectTimeout(3000);
-                            imageConn.setReadTimeout(3000);
-
-                            InputStream imgStream =
-                                    imageConn.getInputStream();
 
                             Bitmap imageBitmap =
-                                    BitmapFactory.decodeStream(imgStream);
+                                    imageDiskCache.get(imageUrl);
+
+                            if (imageBitmap != null) {
+                                cacheHitCount++;
+
+                            } else {
+                                URL myImageUrl =
+                                        new URL(imageUrl);
+
+                                HttpURLConnection imageConn =
+                                        (HttpURLConnection)
+                                                myImageUrl.openConnection();
+
+                                imageConn.setConnectTimeout(3000);
+                                imageConn.setReadTimeout(3000);
+
+                                try (
+                                        InputStream imgStream =
+                                                imageConn.getInputStream();
+
+                                        ByteArrayOutputStream imageBuffer =
+                                                new ByteArrayOutputStream()
+                                ) {
+                                    byte[] buffer = new byte[8192];
+                                    int bytesRead;
+
+                                    while ((bytesRead =
+                                            imgStream.read(buffer)) != -1) {
+
+                                        imageBuffer.write(
+                                                buffer,
+                                                0,
+                                                bytesRead
+                                        );
+                                    }
+
+                                    byte[] imageBytes =
+                                            imageBuffer.toByteArray();
+
+                                    imageBitmap =
+                                            BitmapFactory.decodeByteArray(
+                                                    imageBytes,
+                                                    0,
+                                                    imageBytes.length
+                                            );
+
+                                    if (imageBitmap != null) {
+                                        networkDownloadCount++;
+
+                                        try {
+                                            imageDiskCache.put(
+                                                    imageUrl,
+                                                    imageBytes
+                                            );
+
+                                        } catch (
+                                                IOException cacheException
+                                        ) {
+                                            // 캐시 실패가 이미지 표시를 막지 않게 한다.
+                                            cacheException.printStackTrace();
+                                        }
+                                    }
+
+                                } finally {
+                                    imageConn.disconnect();
+                                }
+                            }
 
                             if (imageBitmap != null) {
                                 postItems.add(
-                                        new PostItem(title, imageBitmap)
+                                        new PostItem(
+                                                title,
+                                                imageBitmap
+                                        )
                                 );
                             }
-
-                            imgStream.close();
-                            imageConn.disconnect();
                         }
                     }
                 }
@@ -476,6 +538,11 @@ public class MainActivity extends AppCompatActivity {
                 textView.setText(
                         "이미지 로드 성공! 전체 게시글: "
                                 + posts.size()
+                                + "개"
+                                + "\n이미지 캐시: "
+                                + cacheHitCount
+                                + "개 / 네트워크 다운로드: "
+                                + networkDownloadCount
                                 + "개"
                 );
             }
