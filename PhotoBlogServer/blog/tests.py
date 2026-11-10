@@ -100,3 +100,109 @@ class PostAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["title"], "검색 대상 은하 이미지")
+
+    def test_acknowledgement_fields_are_read_only(self):
+        detail_url = reverse(
+            "post-detail",
+            kwargs={"pk": self.post.pk},
+        )
+
+        response = self.client.patch(
+            detail_url,
+            {
+                "acknowledged": True,
+                "acknowledged_by": self.user.pk,
+                "acknowledged_at": timezone.now().isoformat(),
+            },
+            format="json",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.post.refresh_from_db()
+        self.assertFalse(self.post.acknowledged)
+        self.assertIsNone(self.post.acknowledged_by)
+        self.assertIsNone(self.post.acknowledged_at)
+
+class PostAcknowledgementTest(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="acknowledger",
+            password="test-password",
+        )
+        self.other_user = get_user_model().objects.create_user(
+            username="other_acknowledger",
+            password="test-password",
+        )
+        self.post = Post.objects.create(
+            author=self.user,
+            title="확인 상태 테스트 게시물",
+            text="서버 권한 연동 자동 테스트",
+            published_date=timezone.now(),
+        )
+        self.acknowledge_url = reverse(
+            "post_acknowledge",
+            kwargs={"pk": self.post.pk},
+        )
+
+    def test_anonymous_user_cannot_acknowledge(self):
+        response = self.client.post(
+            self.acknowledge_url,
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        self.post.refresh_from_db()
+        self.assertFalse(self.post.acknowledged)
+        self.assertIsNone(self.post.acknowledged_by)
+        self.assertIsNone(self.post.acknowledged_at)
+
+    def test_authenticated_user_can_acknowledge(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.acknowledge_url,
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "post_detail",
+                kwargs={"pk": self.post.pk},
+            ),
+        )
+
+        self.post.refresh_from_db()
+        self.assertTrue(self.post.acknowledged)
+        self.assertEqual(
+            self.post.acknowledged_by,
+            self.user,
+        )
+        self.assertIsNotNone(
+            self.post.acknowledged_at,
+        )
+
+    def test_repeated_request_preserves_first_acknowledgement(self):
+        self.client.force_login(self.user)
+        self.client.post(self.acknowledge_url)
+
+        self.post.refresh_from_db()
+        first_user = self.post.acknowledged_by
+        first_time = self.post.acknowledged_at
+
+        self.client.force_login(self.other_user)
+        self.client.post(self.acknowledge_url)
+
+        self.post.refresh_from_db()
+        self.assertEqual(
+            self.post.acknowledged_by,
+            first_user,
+        )
+        self.assertEqual(
+            self.post.acknowledged_at,
+            first_time,
+        )

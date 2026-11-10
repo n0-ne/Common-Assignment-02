@@ -7,12 +7,64 @@
         {{ post.published_date }}
     </div>
     {% endif %}
+
     {% if user.is_authenticated %}
     <a class="btn btn-default" href="{% url 'post_edit' pk=post.pk %}">
         <span class="glyphicon glyphicon-pencil"></span>
     </a>
     {% endif %}
+
     <h1>{{ post.title }}</h1>
+
+    {% if post.image %}
+    <img
+        src="{{ post.image.url }}"
+        class="img-responsive img-thumbnail"
+        alt="{{ post.title }}"
+    >
+    {% endif %}
+
     <p>{{ post.text|linebreaksbr }}</p>
+
+    <hr>
+
+    {% if post.acknowledged %}
+    <div class="alert alert-success">
+        <strong>확인 완료</strong>
+        <p>
+            확인자:
+            {{ post.acknowledged_by.username|default:"삭제된 사용자" }}
+        </p>
+        <p>
+            확인 시각:
+            {{ post.acknowledged_at|date:"Y-m-d H:i:s" }}
+        </p>
+    </div>
+
+    {% else %}
+    <div class="alert alert-warning">
+        <strong>미확인 탐지 게시물</strong>
+
+        {% if user.is_authenticated %}
+        <form
+            method="POST"
+            action="{% url 'post_acknowledge' pk=post.pk %}"
+        >
+            {% csrf_token %}
+            <button
+                type="submit"
+                class="btn btn-primary"
+            >
+                확인 처리
+            </button>
+        </form>
+
+        {% else %}
+        <p>
+            로그인 사용자만 확인 처리할 수 있습니다.
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

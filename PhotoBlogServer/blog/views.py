@@ -1,5 +1,7 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
+from django.http import HttpResponseForbidden
+from django.views.decorators.http import require_POST
 from .models import Post
 from .forms import PostForm
 from rest_framework import viewsets
@@ -14,6 +16,21 @@ def post_list(request):
 def post_detail(request, pk):
     post = get_object_or_404(Post, pk=pk)
     return render(request, 'blog/post_detail.html', {'post': post})
+
+@require_POST
+def post_acknowledge(request, pk):
+    if not request.user.is_authenticated:
+        return HttpResponseForbidden(
+            "로그인 사용자만 게시물을 확인할 수 있습니다."
+        )
+
+    post = get_object_or_404(Post, pk=pk)
+    post.acknowledge(request.user)
+
+    return redirect(
+        'post_detail',
+        pk=post.pk,
+    )
 
 def post_new(request):
     if request.method == "POST":
