@@ -70,7 +70,7 @@ public class MainActivity extends AppCompatActivity {
     SharedPreferences viewerPreferences;
 
     // Android 에뮬레이터에서 10.0.2.2는 PC의 localhost를 의미한다.
-    String site_url = "https://dbrwogud46.pythonanywhere.com";
+    String site_url = "http://10.0.2.2:8000";
 
     JSONObject post_json;
     String imageUrl = null;

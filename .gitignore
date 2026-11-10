@@ -34,3 +34,6 @@ venv-*/
 .env
 .env.*
 !.env.example
+
+# PNG folder of supports in CA2 document
+capture/
